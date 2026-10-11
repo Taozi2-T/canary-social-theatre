@@ -1,5 +1,6 @@
 import { KEY, DEFAULTS, PLATFORMS, eligible, signature, escapeHtml, renderScene } from './core.js';
 import { TheatreRuntime } from './runtime.js';
+import { bindModelPicker } from './models.js';
 
 const context = () => globalThis.SillyTavern.getContext();
 let apiKey = ''; // Session-only. Never stored in chat, settings, exports, or logs.
@@ -97,7 +98,7 @@ function settingsUI() {
         <label class="checkbox_label"><input type="checkbox" data-setting="enabled"><span>启用每轮自动生成</span></label>
         <label class="checkbox_label"><input type="checkbox" data-setting="collapsed"><span>新小剧场默认折叠</span></label>
         <label>生成接口<select class="text_pole" data-setting="provider"><option value="main">酒馆当前主 API</option><option value="independent">独立 API（OpenAI兼容）</option></select></label>
-        <div id="cst-independent"><label>API 基础地址或完整 chat/completions 地址<input class="text_pole" data-setting="endpoint" type="url" placeholder="https://api.example.com/v1" autocomplete="off"></label><label>模型名称<input class="text_pole" data-setting="model" placeholder="填写服务商模型ID"></label><label>API Key（仅本次页面会话保存）<input class="text_pole" id="cst-key" type="password" autocomplete="new-password" placeholder="无鉴权的本地服务可留空"></label><p class="cst-help">请求由浏览器直接发送，端点须允许CORS；HTTPS酒馆不能直连HTTP远端接口。密钥刷新后需重填。</p><label>温度<input class="text_pole" data-setting="temperature" type="number" min="0" max="2" step="0.05"></label></div>
+        <div id="cst-independent"><label>API 基础地址或完整 chat/completions 地址<input class="text_pole" data-setting="endpoint" type="url" placeholder="https://api.example.com/v1" autocomplete="off"></label><label>可用模型<select class="text_pole" id="cst-model-list" disabled><option value="">先获取模型列表</option></select></label><button type="button" class="menu_button" id="cst-fetch-models">获取 / 刷新模型列表</button><p class="cst-help" id="cst-model-status" role="status" aria-live="polite"></p><label>当前模型（可手动填写）<input class="text_pole" data-setting="model" placeholder="获取后选择，或填写服务商模型ID"></label><label>API Key（仅本次页面会话保存）<input class="text_pole" id="cst-key" type="password" autocomplete="new-password" placeholder="无鉴权的本地服务可留空"></label><p class="cst-help">请求由浏览器直接发送，端点须允许CORS；HTTPS酒馆不能直连HTTP远端接口。密钥刷新后需重填。</p><label>温度<input class="text_pole" data-setting="temperature" type="number" min="0" max="2" step="0.05"></label></div>
         <div class="cst-setting-grid"><label>小剧场输出 token 上限<input class="text_pole" data-setting="maxTokens" type="number" min="1200" max="16000" step="100"></label><label>最近正文条数<input class="text_pole" data-setting="contextMessages" type="number" min="2" max="40"></label><label>正文字符预算<input class="text_pole" data-setting="contextChars" type="number" min="2000" max="60000" step="1000"></label><label>延续最近几轮小剧场<input class="text_pole" data-setting="memoryRounds" type="number" min="1" max="8"></label></div>
         <div class="cst-platform-options"><span>好友动态平台</span>${PLATFORMS.map(p => `<label><input type="checkbox" data-platform="${p}">${p}</label>`).join('')}</div>
         <label>圈内设定（可使用 {{user}}、{{char}}）<textarea class="text_pole" data-setting="world" rows="12"></textarea></label>
@@ -127,6 +128,7 @@ function settingsUI() {
     }
     panel.querySelector('#cst-independent').hidden = value.provider !== 'independent';
     panel.querySelector('#cst-key').addEventListener('input', event => { apiKey = event.target.value.trim(); });
+    bindModelPicker(panel, { settings, apiKey: () => apiKey, save: () => context().saveSettingsDebounced() });
     for (const input of panel.querySelectorAll('[data-platform]')) {
         input.checked = value.platforms.includes(input.dataset.platform);
         input.addEventListener('change', () => {
