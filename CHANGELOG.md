@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- Read world info for theatre generation on both main and independent APIs.
+- Capture per-reply activated entry snapshots without running another world scan.
+- Optional per-chat selected books, excluding disabled entries, with macro substitution.
+- World material budget, saved snapshots, read status, and 1.13.2 book-list compatibility.
+- Discard book loads for stale jobs and defer requests if story generation starts during loading.
+
 ## 1.2.0
 
 - Fetch compatible model lists automatically after endpoint/key changes, with refresh and dropdown selection.

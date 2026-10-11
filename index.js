@@ -1,10 +1,13 @@
 import { KEY, DEFAULTS, PLATFORMS, eligible, signature, escapeHtml, renderScene } from './core.js';
 import { TheatreRuntime } from './runtime.js';
 import { bindModelPicker } from './models.js';
+import { WorldInfoMemory, bindWorldInfoSettings } from './world-info.js';
 
 const context = () => globalThis.SillyTavern.getContext();
 let apiKey = ''; // Session-only. Never stored in chat, settings, exports, or logs.
 let runtime;
+let worldInfo;
+let refreshWorldInfo = () => {};
 let initialized = false;
 
 function settings() {
@@ -50,6 +53,11 @@ function render(index) {
     const root = mount(index);
     if (!root) return;
     root.querySelector('.cst-summary-status').textContent = error ? '失败 · 可重试' : active ? '生成中' : queued ? '等待中' : record ? '已更新' : '待生成';
+    const wi = record?.worldInfoStatus;
+    if (record && !error && !active && !queued && wi && wi.mode !== 'off') root.querySelector('.cst-summary-status').textContent += wi.available ? ` · 世界书 ${wi.count} 条` : ' · 世界书无快照';
+    root.querySelector('.cst-summary-status').title = !wi ? '' : wi.mode === 'off' ? '世界书读取已关闭'
+        : !wi.available ? '此回复没有正文触发条目快照；可选择指定世界书后重新生成'
+            : `本次参考 ${wi.count} 条世界书设定${wi.truncated ? '，已达到字符预算' : ''}`;
     root.querySelector('.cst-export').disabled = !record;
     root.querySelector('.cst-regenerate').disabled = active || queued;
     root.querySelector('.cst-regenerate').textContent = record ? '重新生成' : '生成 / 重试';
@@ -101,13 +109,16 @@ function settingsUI() {
         <div id="cst-independent"><label>API 基础地址或完整 chat/completions 地址<input class="text_pole" data-setting="endpoint" type="url" placeholder="https://api.example.com/v1" autocomplete="off"></label><label>可用模型<select class="text_pole" id="cst-model-list" disabled><option value="">先获取模型列表</option></select></label><button type="button" class="menu_button" id="cst-fetch-models">获取 / 刷新模型列表</button><p class="cst-help" id="cst-model-status" role="status" aria-live="polite"></p><label>当前模型（可手动填写）<input class="text_pole" data-setting="model" placeholder="获取后选择，或填写服务商模型ID"></label><label>API Key（仅本次页面会话保存）<input class="text_pole" id="cst-key" type="password" autocomplete="new-password" placeholder="无鉴权的本地服务可留空"></label><p class="cst-help">请求由浏览器直接发送，端点须允许CORS；HTTPS酒馆不能直连HTTP远端接口。密钥刷新后需重填。</p><label>温度<input class="text_pole" data-setting="temperature" type="number" min="0" max="2" step="0.05"></label></div>
         <div class="cst-setting-grid"><label>小剧场输出 token 上限<input class="text_pole" data-setting="maxTokens" type="number" min="1200" max="16000" step="100"></label><label>最近正文条数<input class="text_pole" data-setting="contextMessages" type="number" min="2" max="40"></label><label>正文字符预算<input class="text_pole" data-setting="contextChars" type="number" min="2000" max="60000" step="1000"></label><label>延续最近几轮小剧场<input class="text_pole" data-setting="memoryRounds" type="number" min="1" max="8"></label></div>
         <div class="cst-platform-options"><span>好友动态平台</span>${PLATFORMS.map(p => `<label><input type="checkbox" data-platform="${p}">${p}</label>`).join('')}</div>
+        <label>世界书读取<select class="text_pole" data-setting="worldInfoMode"><option value="active">正文这轮触发的条目（推荐）</option><option value="selected">指定世界书的未禁用条目</option><option value="off">不读取世界书</option></select></label>
+        <label>世界书字符预算<input class="text_pole" data-setting="worldInfoChars" type="number" min="1000" max="30000" step="1000"></label>
+        <button type="button" class="menu_button" id="cst-refresh-world-books">刷新世界书列表 / 状态</button><div id="cst-world-books"></div><p class="cst-help" id="cst-world-status" role="status"></p>
         <label>圈内设定（可使用 {{user}}、{{char}}）<textarea class="text_pole" data-setting="world" rows="12"></textarea></label>
         <label>补充设定 / 文风 / 金主背景<textarea class="text_pole" data-setting="extraPrompt" rows="5" placeholder="例如：我的金主姓沈，京圈家族背景。群聊少用网络热梗，阴阳怪气更克制。"></textarea></label>
         <div class="cst-settings-actions"><button type="button" class="menu_button" id="cst-latest">生成最新回复</button><button type="button" class="menu_button" id="cst-cancel">取消待办 / 丢弃本次结果</button><button type="button" class="menu_button" id="cst-reset-world">恢复默认圈内设定</button></div><p id="cst-settings-status" class="cst-help">小剧场随当前聊天保存。可在每条回复下重试、换频道、导出HTML。</p>
         </div></div>`;
     container.append(panel);
     const value = settings();
-    const numeric = { temperature: [0, 2], maxTokens: [1200, 16000], contextMessages: [2, 40], contextChars: [2000, 60000], memoryRounds: [1, 8] };
+    const numeric = { temperature: [0, 2], maxTokens: [1200, 16000], contextMessages: [2, 40], contextChars: [2000, 60000], memoryRounds: [1, 8], worldInfoChars: [1000, 30000] };
     for (const input of panel.querySelectorAll('[data-setting]')) {
         const key = input.dataset.setting;
         if (input.type === 'checkbox') input.checked = value[key]; else input.value = value[key];
@@ -121,7 +132,7 @@ function settingsUI() {
             }
             settings()[key] = next;
             context().saveSettingsDebounced();
-            if (key === 'provider' || key === 'enabled') runtime.cancel();
+            if (key === 'provider' || key === 'enabled' || key === 'worldInfoMode') runtime.cancel();
             panel.querySelector('#cst-independent').hidden = settings().provider !== 'independent';
             render();
         });
@@ -129,6 +140,8 @@ function settingsUI() {
     panel.querySelector('#cst-independent').hidden = value.provider !== 'independent';
     panel.querySelector('#cst-key').addEventListener('input', event => { apiKey = event.target.value.trim(); });
     bindModelPicker(panel, { settings, apiKey: () => apiKey, save: () => context().saveSettingsDebounced() });
+    refreshWorldInfo = bindWorldInfoSettings(panel, { context, settings, memory: worldInfo,
+        save: () => { runtime.cancel(); context().saveMetadata().catch(() => notify('世界书选择保存失败，请重试。')); } });
     for (const input of panel.querySelectorAll('[data-platform]')) {
         input.checked = value.platforms.includes(input.dataset.platform);
         input.addEventListener('change', () => {
@@ -156,15 +169,20 @@ function init() {
     if (initialized) return;
     initialized = true;
     try {
-        runtime = new TheatreRuntime({ context, settings, apiKey: () => apiKey, status, render });
+        worldInfo = new WorldInfoMemory({ context, settings, changed: () => refreshWorldInfo() });
+        runtime = new TheatreRuntime({ context, settings, apiKey: () => apiKey, worldInfo, status, render });
         settingsUI();
         const ctx = context();
         const events = ctx.eventTypes || ctx.event_types;
         const on = (name, handler) => { if (events?.[name]) ctx.eventSource.on(events[name], handler); };
-        on('GENERATION_STARTED', (...args) => runtime.hostStarted(...args));
-        on('GENERATION_ENDED', () => runtime.hostEnded());
-        on('MESSAGE_RECEIVED', (id, type) => {
+        on('GENERATION_STARTED', (type, options, dryRun) => { worldInfo.start(type, dryRun); return runtime.hostStarted(type, options, dryRun); });
+        on('WORLD_INFO_ACTIVATED', entries => worldInfo.activated(entries));
+        on('GENERATION_ENDED', () => { worldInfo.end(); runtime.hostEnded(); });
+        on('MESSAGE_RECEIVED', async (id, type) => {
             if (type === 'quiet' || type === 'impersonate') return;
+            const received = context(), message = received.chat[Number(id)];
+            try { await worldInfo.receive(Number(id), type); } catch { notify('世界书快照保存失败，本次仍可生成；刷新后可能需要重新选择世界书。'); }
+            if (received.chatMetadata !== context().chatMetadata || context().chat[Number(id)] !== message) return;
             runtime.enqueue(Number(id));
         });
         on('CHARACTER_MESSAGE_RENDERED', id => render(Number(id)));
@@ -173,7 +191,7 @@ function init() {
         on('MESSAGE_SWIPED', id => { render(Number(id)); });
         on('MESSAGE_DELETED', () => render());
         on('MORE_MESSAGES_LOADED', () => render());
-        on('CHAT_CHANGED', () => { runtime.cancel(); runtime.hostBusy = false; setTimeout(render, 100); });
+        on('CHAT_CHANGED', () => { runtime.cancel(); worldInfo.reset(); runtime.hostBusy = false; setTimeout(render, 100); });
         document.addEventListener('click', event => {
             const button = event.target.closest?.('.cst-shell button');
             if (!button) return;

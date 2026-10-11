@@ -2,8 +2,8 @@ import { KEY, eligible, signature, cacheKey, findRecord, buildPrompt, parseScene
 
 // Event callbacks never await drain(): SillyTavern awaits message listeners itself.
 export class TheatreRuntime {
-    constructor({ context, settings, apiKey, status = () => {}, render = () => {} }) {
-        Object.assign(this, { context, settings, apiKey, status, render });
+    constructor({ context, settings, apiKey, worldInfo, status = () => {}, render = () => {} }) {
+        Object.assign(this, { context, settings, apiKey, worldInfo, status, render });
         this.queue = [];
         this.epoch = 0;
         this.running = false;
@@ -83,7 +83,11 @@ export class TheatreRuntime {
                 const timeout = settings.provider === 'independent' ? setTimeout(() => job.controller.abort(), 120000) : null;
                 this.status(index, '正在织起圈内风声…');
                 try {
-                    const prompt = buildPrompt(ctx, index, settings, this.cache(ctx));
+                    const worldInfo = this.worldInfo ? await this.worldInfo.read(ctx, job.message, settings) : undefined;
+                    // Loading a book may finish after the user has changed chats or edited a reply.
+                    if (!this.valid(job)) continue;
+                    if (this.hostBusy) { this.queue.unshift(job); break; }
+                    const prompt = buildPrompt(ctx, index, settings, this.cache(ctx), worldInfo);
                     let raw;
                     if (settings.provider === 'main') {
                         if (typeof ctx.generateRaw !== 'function') throw new Error('酒馆缺少generateRaw接口，请更新SillyTavern。');
@@ -99,7 +103,9 @@ export class TheatreRuntime {
                     const scene = parseScene(raw, settings.platforms);
                     const current = this.context();
                     const cache = this.cache(current);
-                    cache[cacheKey(job.source)] = { source: job.source, scene, created: Date.now() };
+                    cache[cacheKey(job.source)] = { source: job.source, scene, worldInfoStatus: worldInfo ? {
+                        mode: worldInfo.mode, count: worldInfo.entries.length, available: worldInfo.available, truncated: worldInfo.truncated,
+                    } : undefined, created: Date.now() };
                     // Bounded archive. Keep the most recent 300 versions per chat.
                     const keys = Object.keys(cache).sort((a, b) => cache[a].created - cache[b].created);
                     for (const key of keys.slice(0, Math.max(0, keys.length - 300))) delete cache[key];
