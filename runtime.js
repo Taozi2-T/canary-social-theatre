@@ -1,4 +1,5 @@
 import { KEY, eligible, signature, cacheKey, findRecord, buildPrompt, parseScene, requestIndependent } from './core.js';
+import { withMainApi, waitForMainApi } from './main-api.js';
 
 // Event callbacks never await drain(): SillyTavern awaits message listeners itself.
 export class TheatreRuntime {
@@ -54,6 +55,7 @@ export class TheatreRuntime {
         if (this.mainRequest) {
             try { await this.mainRequest; } catch { /* reported by drain */ }
         }
+        await waitForMainApi();
     }
 
     hostEnded() { this.hostBusy = false; this.schedule(); }
@@ -91,10 +93,13 @@ export class TheatreRuntime {
                     let raw;
                     if (settings.provider === 'main') {
                         if (typeof ctx.generateRaw !== 'function') throw new Error('酒馆缺少generateRaw接口，请更新SillyTavern。');
-                        this.mainRequest = Promise.resolve().then(() => ctx.generateRaw({
+                        this.mainRequest = withMainApi(() => {
+                            if (!this.valid(job)) throw new DOMException('Job cancelled', 'AbortError');
+                            return ctx.generateRaw({
                             systemPrompt: prompt.system, prompt: prompt.user,
                             responseLength: settings.maxTokens, trimNames: false,
-                        }));
+                            });
+                        });
                         raw = await this.mainRequest;
                     } else {
                         raw = await requestIndependent(settings, prompt, this.apiKey(), job.controller.signal);

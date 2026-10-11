@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+- Shared main API request queue for coexistence with the PrivateHub video theatre extension.
+- Foreground story generation waits for the shared queue; stale queued jobs are discarded.
+
 ## 1.3.0
 
 - Read world info for theatre generation on both main and independent APIs.

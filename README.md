@@ -1,4 +1,4 @@
-# 金丝雀 · 社交小剧场 1.3.0
+# 金丝雀 · 社交小剧场 1.3.1
 
 一个独立的 SillyTavern 前端扩展。角色每次生成回复后，扩展再调用一次模型，将新的圈内群聊和社交动态显示在这条回复下方。
 
@@ -17,7 +17,7 @@
 
 ### 离线安装
 
-1. 解压 `canary-social-theatre-v1.3.0.zip`。
+1. 解压 `canary-social-theatre-v1.3.1.zip`。
 2. 将解压得到的整个 `canary-social-theatre` 文件夹放入酒馆的 `data/<你的用户目录>/extensions/`。单用户默认目录通常是 `data/default-user/extensions/`。
 3. 检查最终结构是 `data/default-user/extensions/canary-social-theatre/manifest.json`，不要多套一层同名目录。
 4. 刷新酒馆网页。在「扩展」设置里展开「✦ 金丝雀 · 社交小剧场」。如果扩展被禁用，在「管理扩展」里启用。
@@ -26,6 +26,8 @@
 另一种安装位置：`public/scripts/extensions/third-party/canary-social-theatre/`，用于所有用户共用。任选一个位置安装即可，不要安装两份。
 
 ZIP 是离线安装包，不能把本地 ZIP 路径填入酒馆的 Git 仓库安装地址。在线安装使用上面的 GitHub 仓库链接。
+
+从 1.3.1 起，与 PrivateHub 视频小剧场共享主 API 请求队列；同时安装两个扩展时，主 API 小剧场请求逐个执行，正文等待当前队列完成。
 
 ## 两种 API 模式
 
