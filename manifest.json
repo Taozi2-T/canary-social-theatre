@@ -1,0 +1,13 @@
+{
+  "display_name": "金丝雀 · 社交小剧场",
+  "loading_order": 100,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Canary Theatre",
+  "version": "1.1.0",
+  "minimum_client_version": "1.13.2",
+  "auto_update": false,
+  "homePage": "https://github.com/Taozi2-T/canary-social-theatre"
+}
